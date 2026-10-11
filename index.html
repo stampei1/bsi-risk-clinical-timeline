@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<meta name="build" content="20261011160902">
+<meta name="build" content="20261011162507">
 <title>BSI Timeline</title>
 <meta name="description" content="Demo: stool-microbiome bloodstream-infection risk on a patient timeline, allo-HCT.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261011160902">
+<link rel="stylesheet" href="style.css?v=20261011162507">
 </head>
 <body>
 <header class="top">
@@ -86,7 +86,7 @@
   <div class="sheet">
     <button class="icon close" data-close aria-label="Close">×</button>
     <h2 id="aboutTitle">About</h2>
-    <p class="lead">Each stool sample gives two scores: the risk of an <i>E. coli</i> and of an <i>Enterococcus</i>
+    <p class="lead">Each stool sample gives two scores: the model's estimate of the risk of an <i>E. coli</i> and of an <i>Enterococcus</i>
       bloodstream infection (BSI) in the next 14 days. Step through a patient's stay with ‹ › (or the arrow keys); later data stay hidden.</p>
     <ul class="tiers">
       <li><span class="score high">High</span><span id="aboutHigh"></span></li>
@@ -95,8 +95,25 @@
     </ul>
     <p class="fine">Real, de-identified allo-HCT patients from MSK (Xavier Lab). Scores are from models that never saw the patient shown
       (cross-validation). Not validated prospectively; not for clinical use. Tier cut-offs can be changed in Settings (⚙).</p>
+    <p><button id="factsLink" class="link small">Model facts: population, performance, calibration and warnings →</button></p>
   </div>
 </div>
-<script src="app.js?v=20261011160902"></script>
+
+<div id="facts" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="factsTitle">
+  <div class="sheet wide">
+    <button class="icon close" data-close aria-label="Close">×</button>
+    <h2 id="factsTitle">Model facts</h2>
+    <div id="factsBody"></div>
+  </div>
+</div>
+
+<div id="icons" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="iconsTitle">
+  <div class="sheet narrow">
+    <button class="icon close" data-close aria-label="Close">×</button>
+    <h2 id="iconsTitle">Out of 100 similar samples</h2>
+    <div id="iconsBody"></div>
+  </div>
+</div>
+<script src="app.js?v=20261011162507"></script>
 </body>
 </html>
