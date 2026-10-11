@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="build" content="20261011160902">
+<title>BSI Timeline</title>
+<meta name="description" content="Demo: stool-microbiome bloodstream-infection risk on a patient timeline, allo-HCT.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=20261011160902">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M8 17h4l2-6 4 12 2-6h4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div class="name">BSI Timeline</div>
+  </div>
+  <div class="pick">
+    <select id="exampleSel" aria-label="Example patients"></select>
+    <input id="pidInput" list="pidList" placeholder="Patient ID" autocomplete="off" aria-label="Search patient ID">
+    <datalist id="pidList"></datalist>
+    <select id="filterSel" aria-label="Filter">
+      <option value="all">All patients</option>
+      <option value="ecoli">E. coli BSI</option>
+      <option value="entero">Enterococcus BSI</option>
+      <option value="either">Either BSI</option>
+      <option value="none">No BSI</option>
+    </select>
+    <button id="randomBtn" class="ghost">Random</button>
+  </div>
+  <div class="tools">
+    <button id="aboutBtn" class="link">About</button>
+    <button id="settingsBtn" class="icon" aria-label="Settings" title="Settings">⚙</button>
+    <button id="themeBtn" class="icon" aria-label="Toggle dark mode" title="Light / dark">◐</button>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="tl card">
+    <div class="tlhead">
+      <div class="who" id="who"></div>
+      <div class="stepper" role="group" aria-label="Step through stool samples">
+        <button id="prevBtn" class="icon" aria-label="Previous sample">‹</button>
+        <div class="day"><span class="lbl">Day</span><span id="dayNum">—</span><span id="sampleNum" class="sn"></span></div>
+        <button id="nextBtn" class="icon" aria-label="Next sample">›</button>
+      </div>
+    </div>
+    <div id="timeline"></div>
+  </section>
+  <aside class="side">
+    <div id="outcome" class="card hidden"></div>
+    <div id="today" class="card"></div>
+  </aside>
+</main>
+
+<footer class="foot">Demo with retrospective, de-identified MSK allo-HCT data · not for clinical use</footer>
+<div id="tip" class="tip hidden" role="tooltip"></div>
+
+<div id="settings" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="setTitle">
+  <div class="sheet">
+    <button class="icon close" data-close aria-label="Close">×</button>
+    <h2 id="setTitle">Settings</h2>
+    <div class="setrow">
+      <label for="hiSel">High tier starts at the cut-off that catches</label>
+      <select id="hiSel"></select>
+    </div>
+    <div class="setrow">
+      <label for="waSel">Watch tier starts at the cut-off that catches</label>
+      <select id="waSel"></select>
+    </div>
+    <div class="setrow">
+      <label for="winSel">Timeline window</label>
+      <select id="winSel"><option value="30">30 days</option><option value="60">60 days</option><option value="120">120 days</option><option value="all">Whole stay</option></select>
+    </div>
+    <div id="tierStats"></div>
+    <p class="fine">"Catches" = share of stool samples taken in the 14 days before an infection that fall at or above the cut-off.
+      Statistics are from the retrospective MSK allo-HCT cohort, scored by models that never saw the patient (cross-validation).
+      Cut-offs are chosen on that same cohort.</p>
+  </div>
+</div>
+
+<div id="about" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+  <div class="sheet">
+    <button class="icon close" data-close aria-label="Close">×</button>
+    <h2 id="aboutTitle">About</h2>
+    <p class="lead">Each stool sample gives two scores: the risk of an <i>E. coli</i> and of an <i>Enterococcus</i>
+      bloodstream infection (BSI) in the next 14 days. Step through a patient's stay with ‹ › (or the arrow keys); later data stay hidden.</p>
+    <ul class="tiers">
+      <li><span class="score high">High</span><span id="aboutHigh"></span></li>
+      <li><span class="score watch">Watch</span><span id="aboutWatch"></span></li>
+      <li><span class="score low">Low</span><span id="aboutLow"></span></li>
+    </ul>
+    <p class="fine">Real, de-identified allo-HCT patients from MSK (Xavier Lab). Scores are from models that never saw the patient shown
+      (cross-validation). Not validated prospectively; not for clinical use. Tier cut-offs can be changed in Settings (⚙).</p>
+  </div>
+</div>
+<script src="app.js?v=20261011160902"></script>
+</body>
+</html>
