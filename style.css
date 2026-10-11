@@ -182,3 +182,21 @@ ul.warn { margin: 0; padding-left: 18px; font-size: 13.5px; color: var(--ink-2);
 .dots span.f { background: var(--high); border-color: var(--high); }
 @media (max-width: 700px) { dl.mf { grid-template-columns: minmax(0, 1fr); gap: 2px; } dl.mf dd { margin-bottom: 8px; } .sheet { padding: 22px 18px; } }
 #timeline text, #timeline .t-horizon { pointer-events: none; }
+
+/* ---------- review fixes ---------- */
+.org .nosingle { font-size: 13px; color: var(--ink-2); margin: 4px 0 0; }
+.cal-pt.zero { fill: var(--surface); stroke: var(--accent); stroke-width: 1.6; }
+@media (max-height: 760px) and (min-width: 1001px) {
+  .layout { padding-top: 12px; gap: 14px; }
+  .tl { padding: 10px 14px 6px; }
+  .side { top: 64px; gap: 10px; }
+  #today, #outcome { padding: 12px 14px; }
+  #today h3 { font-size: 15px; }
+  .org { margin-top: 8px; padding: 10px 12px; }
+  .org .num { font-size: 26px; }
+  .org .say { margin-top: 3px; font-size: 13px; }
+  .org .whyh { margin-top: 6px; }
+  .org .why li { font-size: 13px; }
+  .ctx { margin-top: 8px; }
+  .top { padding-top: 8px; padding-bottom: 8px; }
+}

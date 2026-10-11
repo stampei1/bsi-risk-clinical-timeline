@@ -70,7 +70,7 @@ function tierLine(o, t) {
 async function init() {
   const th = store('bt-theme'); if (th) document.documentElement.dataset.theme = th;
   [S.meta, S.cohort, S.cases] = await Promise.all([get('data/meta.json'), get('data/cohort.json'), get('data/cases.json')]);
-  computeTiers(); computeCalibration();
+  computeTiers(); computeCalibration(); checkReasonCoverage();
   const ex = $('exampleSel');
   ex.add(new Option('Examples…', ''));
   S.cases.forEach((c, i) => ex.add(new Option(`Example ${i + 1}`, c.pid)));
@@ -98,7 +98,8 @@ async function init() {
     sel.value = S.sens[key]; sel.onchange = () => { S.sens[key] = +sel.value; store('bt-sens', S.sens); computeTiers(); settings(); render(); };
   }
   $('winSel').value = S.win; $('winSel').onchange = (e) => { S.win = e.target.value; store('bt-win', S.win); render(); };
-  let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(render, 120); });
+  const ph = () => { $('pidInput').placeholder = innerWidth < 600 ? 'ID' : 'Patient ID'; }; ph();
+  let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { ph(); render(); }, 120); });
   await open(S.cases[0].pid, 'Example 1');
 }
 const show = (id) => $(id).classList.remove('hidden');
@@ -142,36 +143,66 @@ function context(p, d) {
   const ancV = ad != null ? Math.max(...anc.filter(a => a[0] === ad).map(a => a[1])) : null;
   const t = p.temp.filter(([x]) => x <= d && d - x <= 1), tmax = t.length ? Math.max(...t.map(a => a[1])) : null;
   const abx = [...new Set(p.drugs.filter(([, a, b]) => a <= d && d <= b).map(([i]) => S.meta.drugs[i]))];
-  return { anc: ancV, tmax, abx, hct: d };
+  const peak = {};                                    // highest abundance in the past 14 days, current sample included, never later ones
+  for (const o of ORGS) peak[o] = Math.max(0, ...p.samples.filter(q => q.day <= d && q.day >= d - 14 && q['ab_' + o] != null).map(q => q['ab_' + o]));
+  return { anc: ancV, tmax, abx, hct: d, peak };
 }
-// group name (meta.json groups) -> [phrase, timeline lane or null, plain-language note for groups without a lane]
+// group name (meta.json groups) -> [phrase(c, s), timeline lane or null, ⓘ note or note(c, s)]
+// DRAFT wording (2026-10-11) — for Isaac to approve. Every phrase must return a string: a group that ranks in the
+// top 2 is never silently dropped (build/audit_reasons.py checks this).
+const DOMINANT = 0.3;                                  // ≥ 30% of the community = domination (Taur et al., Clin Infect Dis 2012)
+function abPhrase(o) {
+  return (c, s) => {
+    const now = s['ab_' + o], pk = c.peak[o], n = now ?? 0;
+    const nowTxt = now == null ? 'no reading' : abTxt(now);
+    if (pk >= 0.01 && pk >= 10 * n) return `${NI[o]} in stool: now ${nowTxt}, up to ${abTxt(pk)} in the past 2 weeks`;
+    return `${NI[o]} in stool: ${nowTxt}${n >= DOMINANT ? ' (dominant)' : ''}`;
+  };
+}
+const abNote = (o) => (c, s) => (s['ab_' + o] ?? 0) >= DOMINANT
+  ? `Dominant = at least 30% of the stool community (Taur et al., Clin Infect Dis 2012).` : null;
 const REASON = {
-  'E. coli abundance and trend': [(c, s) => `<i>E. coli</i> in stool: ${abTxt(s.ab_ecoli)}`, 'ab'],
-  'Enterococcus abundance and trend': [(c, s) => `<i>Enterococcus</i> in stool: ${abTxt(s.ab_entero)}`, 'ab'],
-  'Lineages containing Enterococcus': [() => '<i>Enterococcus</i>-related bacteria in stool', null,
-    'Higher-level bacterial groups that contain Enterococcus (e.g. its family and order). Not plotted here.'],
+  'E. coli abundance and trend': [abPhrase('ecoli'), 'ab', abNote('ecoli')],
+  'Enterococcus abundance and trend': [abPhrase('entero'), 'ab', abNote('entero')],
+  'Lineages containing Enterococcus': [() => '<i>Enterococcus</i>-related bacteria in stool (not plotted)', null,
+    'Higher-level bacterial groups that contain Enterococcus (e.g. its family and order).'],
   'Pathogen vs commensal ratios': [() => 'Balance of <i>Enterococcus</i> vs commensal anaerobes', 'ab',
     'Compares Enterococcus with anaerobic commensal bacteria; only Enterococcus is plotted here.'],
-  'Protective commensal indices': [() => 'Protective commensal bacteria pattern', null,
-    'An index of gut bacteria reported in the literature as protective (e.g. Blautia, Barnesiella). Not plotted here.'],
+  'Protective commensal indices': [() => 'Protective commensal bacteria pattern (not plotted)', null,
+    'An index of gut bacteria reported in the literature as protective (e.g. Blautia, Barnesiella).'],
+  'Bacteroides interaction': [() => 'Pattern involving <i>Bacteroides</i> (not plotted)', null,
+    'How much Bacteroides there is together with the pathogen.'],
+  'Other gut bacteria': [() => 'Pattern of other gut bacteria (not plotted)', null,
+    'Current amounts of the many other bacterial groups in the stool sample.'],
+  'Other bacteria, trends': [() => 'Recent shifts in other gut bacteria (not plotted)', null,
+    'Recent trends (e.g. 7–30-day mean, max, slope) of other bacterial groups.'],
   'Antibiotics, prior 14 days': [(c) => c.abx.length ? `Antibiotics in the last 2 weeks (now: ${c.abx.slice(0, 2).join(', ')})` : 'Antibiotics in the last 2 weeks', 'abx'],
   'Antibiotics by class': [(c) => c.abx.length ? `Recent antibiotics (now: ${c.abx.slice(0, 2).join(', ')})` : 'Recent antibiotic exposure', 'abx'],
+  'Antibiotic totals': [() => 'Amount of recent antibiotic exposure', 'abx'],
   'Antibiotic groups': [() => 'Broad-spectrum / anti-anaerobe exposure', 'abx'],
   'Antibiotic intensification': [() => 'Recent escalation of antibiotics', 'abx'],
+  'Days since last antibiotic dose': [() => 'Time since the last antibiotic dose', 'abx'],
   'Antibiotic → commensal-loss cascade': [() => 'Antibiotics followed by loss of anaerobes', 'abx'],
-  'Neutrophil count (ANC)': [(c) => c.anc != null && c.anc < 0.5 ? `Neutropenia (ANC ${c.anc})` : null, 'anc'],
+  'Neutrophil count (ANC)': [(c) => c.anc == null ? 'Neutrophil data' : c.anc < 0.5 ? `Neutropenia (ANC ${c.anc})` : `Neutrophil count (ANC ${c.anc})`, 'anc'],
   'ANC trend, prior 14 days': [() => 'Neutrophil trend over 2 weeks', 'anc'],
   'Neutropenia × Enterococcus': [() => 'Neutropenia while <i>Enterococcus</i> is present', 'anc'],
   'ANC recovery timing': [() => 'Timing of neutrophil recovery', 'anc'],
-  'Day relative to transplant': [(c) => c.hct >= 0 && c.hct <= 30 ? `Early after transplant (day +${c.hct})` : null, null,
+  'Day relative to transplant': [(c) => c.hct < 0 ? `Before transplant (day ${dayTxt(c.hct)})`
+    : c.hct <= 30 ? `Early after transplant (day ${dayTxt(c.hct)})` : `Day ${dayTxt(c.hct)} after transplant`, null,
     'The number of days since transplant.'],
 };
+const NO_SINGLE = 'No single factor stood out; the score reflects several small contributions.';   // DRAFT wording
+function checkReasonCoverage() {
+  for (const o of ORGS) for (const g of S.meta.groups[o])
+    if (!(g in REASON)) console.warn(`BSI Timeline: driver group "${g}" (${NAME[o]}) has no REASON phrase`);
+}
 function reasons(o, s, c) {
   const g = s['g_' + o]; if (!g) return [];
   const names = S.meta.groups[o], seen = new Set(), out = [];
   g.map((v, i) => [v, i]).filter(([v]) => v > Math.log(1.1)).sort((a, b) => b[0] - a[0]).forEach(([, i]) => {
-    const r = REASON[names[i]]; const txt = r ? r[0](c, s) : null;
-    if (txt && !seen.has(txt) && out.length < 2) { seen.add(txt); out.push({ txt, lane: r[1], note: r[2] || null }); }
+    const r = REASON[names[i]] || [() => names[i], null];            // never drop a group; fall back to its name
+    const txt = r[0](c, s), note = typeof r[2] === 'function' ? r[2](c, s) : r[2] || null;
+    if (!seen.has(txt) && out.length < 2) { seen.add(txt); out.push({ txt, lane: r[1], note, group: names[i] }); }
   });
   return out;
 }
@@ -183,11 +214,11 @@ function prevScored(o) {
 }
 function today(p, cur, d) {
   const c = context(p, d);
-  let h = `<h3>Day ${dayTxt(d)} after transplant</h3><div class="meta">Stool sample ${S.cur + 1} of ${p.samples.length} ·
-    scores cover days ${dayTxt(d)} to ${dayTxt(d + HORIZON)}</div>`;
+  let h = `<h3>Day ${dayTxt(d)} after transplant</h3><div class="meta">Bloodstream infection (BSI) risk from stool sample ${S.cur + 1} of ${p.samples.length} ·
+    covers days ${dayTxt(d)} to ${dayTxt(d + HORIZON)}</div>`;
   ORGS.forEach((o, k) => {
     const pv = cur['p_' + o];
-    const title = `Risk of ${NI[o]} ${k === 0 ? 'bloodstream infection (BSI)' : 'BSI'} in the next 14 days`;
+    const title = `${NI[o]} BSI risk, next 14 days`;
     if (pv == null) {
       const after = S.first[o] != null && d >= S.first[o];
       h += `<div class="org"><div class="hl"><span class="oname">${title}</span><span class="score na">${after ? 'after BSI' : 'not scored'}</span></div>
@@ -204,9 +235,9 @@ function today(p, cur, d) {
         <span class="hr"><span class="score ${t}">${TIER[t]}</span><button class="info" data-facts="${o}" aria-label="Model facts for ${NAME[o]}" title="Model facts">ⓘ</button></span></div>
       <div class="big"><span class="num">${pct(pv)}</span></div>${change}
       <p class="say">${tierLine(o, t)}.</p>
-      <p class="src">Score from the day ${dayTxt(d)} stool sample.</p>
-      ${rs.length ? `<div class="whyh">What raised the model's score</div><ul class="why">${rs.map(r =>
-        `<li tabindex="0" ${r.lane ? `data-lane="${r.lane}"` : ''} ${r.note ? `title="${r.note}"` : ''}>${r.txt}${r.note ? ' <span class="nl">ⓘ</span>' : ''}</li>`).join('')}</ul>` : ''}</div>`;
+      ${t === 'low' ? '' : `<div class="whyh">What raised the model's score</div>${rs.length ? `<ul class="why">${rs.map(r =>
+        `<li tabindex="0" ${r.lane ? `data-lane="${r.lane}"` : ''} ${r.note ? `title="${r.note}"` : ''}><span>${r.txt}${r.note ? ' <span class="nl">ⓘ</span>' : ''}</span></li>`).join('')}</ul>`
+        : `<p class="nosingle">${NO_SINGLE}</p>`}`}</div>`;
   });
   const ctx = [];
   if (c.anc != null) ctx.push(`<span class="${c.anc < 0.5 ? 'flag' : ''}">ANC ${c.anc}${c.anc < 0.5 ? ' (neutropenic)' : ''}</span>`);
@@ -259,7 +290,8 @@ function timeline(p, d) {
   if (hi - lo > win) { d1 = Math.min(hi, d + 16); d0 = d1 - win; if (d0 < lo) { d0 = lo; d1 = lo + win; } }
   const G = narrow ? 92 : 132, R = 10, PW = W - G - R, x = (t) => G + (t - d0) / (d1 - d0) * PW;
   const drugs = [...new Set(p.drugs.filter(([, a, b]) => vis(a) && b >= d0 && a <= d1).map(([i]) => i))].sort((a, b) => a - b);
-  const H = { risk: 74, ab: 64, lane: 13, anc: 56, temp: 56, gap: 14 };
+  const short = innerHeight < 760;
+  const H = short ? { risk: 60, ab: 54, lane: 12, anc: 46, temp: 46, gap: 10 } : { risk: 74, ab: 64, lane: 13, anc: 56, temp: 56, gap: 14 };
   const rows = []; let y = 28;
   const add = (k, h) => { rows.push({ k, y, h }); y += h + H.gap; };
   add('ecoli', H.risk); add('entero', H.risk); add('ab', H.ab); add('abx', Math.max(1, drugs.length) * H.lane + 18); add('anc', H.anc); add('temp', H.temp);
@@ -301,8 +333,11 @@ function timeline(p, d) {
     } else if (r.k === 'ab') {
       const a = Math.log10(0.0005), b = 0, ly = (v) => r.y + r.h - (Math.log10(Math.max(0.0005, Math.min(1, v))) - a) / (b - a) * r.h;
       bg(r); lbl(r, 'In stool', narrow ? 'rel. abundance' : 'relative abundance');
-      o += `<line x1="${G + 8}" x2="${G + 26}" y1="${r.y + 9}" y2="${r.y + 9}" class="t-ab-a"/><text x="${G + 30}" y="${r.y + 12}" class="t-sub it">E. coli</text>
-        <line x1="${G + 66}" x2="${G + 84}" y1="${r.y + 9}" y2="${r.y + 9}" class="t-ab-b"/><text x="${G + 88}" y="${r.y + 12}" class="t-sub it">Enterococcus</text>`;
+      o += narrow
+        ? `<line x1="0" x2="14" y1="${r.y + 24}" y2="${r.y + 24}" class="t-ab-a"/><text x="17" y="${r.y + 27}" class="t-sub it">E. coli</text>
+           <line x1="0" x2="14" y1="${r.y + 37}" y2="${r.y + 37}" class="t-ab-b"/><text x="17" y="${r.y + 40}" class="t-sub it">Entero.</text>`
+        : `<line x1="${G + 8}" x2="${G + 26}" y1="${r.y + 9}" y2="${r.y + 9}" class="t-ab-a"/><text x="${G + 30}" y="${r.y + 12}" class="t-sub it">E. coli</text>
+           <line x1="${G + 66}" x2="${G + 84}" y1="${r.y + 9}" y2="${r.y + 9}" class="t-ab-b"/><text x="${G + 88}" y="${r.y + 12}" class="t-sub it">Enterococcus</text>`;
       for (const v of [0.001, 0.01, 0.1, 1]) o += `<text x="${G - 6}" y="${ly(v) + 3}" text-anchor="end" class="t-tick">${+(v * 100).toPrecision(2)}%</text>`;
       for (const [org, cls] of [['ecoli', 'a'], ['entero', 'b']]) {
         const pts = p.samples.filter(s => s['ab_' + org] != null && vis(s.day));
@@ -410,7 +445,9 @@ function facts(focus) {
       <text x="${sx(v)}" y="${Hh - B + 13}" text-anchor="middle" class="t-tick">${v * 100}%</text><text x="${L - 4}" y="${sy(v) + 3}" text-anchor="end" class="t-tick">${v * 100}%</text>`;
     s += `<line x1="${sx(0.001)}" y1="${sy(0.001)}" x2="${sx(0.4)}" y2="${sy(0.4)}" class="cal-diag"/>`;
     s += `<path d="${c.bins.map((b, i) => `${i ? 'L' : 'M'}${sx(b.pred)},${sy(b.obs)}`).join('')}" class="cal-line"/>`;
-    s += c.bins.map(b => `<circle cx="${sx(b.pred)}" cy="${sy(b.obs)}" r="3.4" class="cal-pt"><title>predicted ${pct(b.pred)}, observed ${pct(b.obs)} (n = ${fmtN(b.n)})${b.obs === 0 ? ' — observed 0, drawn at axis floor' : ''}</title></circle>`).join('');
+    s += c.bins.map(b => b.obs === 0
+      ? `<circle cx="${sx(b.pred)}" cy="${sy(0.001)}" r="3.6" class="cal-pt zero"><title>predicted ${pct(b.pred)}, no BSIs observed (n = ${fmtN(b.n)})</title></circle><text x="${sx(b.pred)}" y="${sy(0.001) - 6}" text-anchor="middle" class="t-tick">0</text>`
+      : `<circle cx="${sx(b.pred)}" cy="${sy(b.obs)}" r="3.4" class="cal-pt"><title>predicted ${pct(b.pred)}, observed ${pct(b.obs)} (n = ${fmtN(b.n)})</title></circle>`).join('');
     s += `<text x="${(L + W - Rr) / 2}" y="${Hh - 2}" text-anchor="middle" class="t-sub">model's estimate</text>
       <text x="10" y="${(T + Hh - B) / 2}" text-anchor="middle" class="t-sub" transform="rotate(-90 10 ${(T + Hh - B) / 2})">observed rate</text></svg>`;
     return `<figure class="cal"><figcaption>${NI[o]}</figcaption>${s}<div class="fine">10 bins of ${fmtN(Math.round(c.total / 10))} samples (total ${fmtN(c.binned)} of ${fmtN(c.total)} scored)</div></figure>`;
@@ -436,7 +473,7 @@ function facts(focus) {
     <h3>Tiers at your current settings</h3>${tierTable(focus ? [focus] : ORGS)}
     <h3>Calibration</h3><div class="cals">${(focus ? [focus] : ORGS).map(calib).join('')}</div>
     <p class="fine">Mean model estimate vs observed rate of BSI within 14 days, by tenths of the score; the diagonal is perfect agreement.
-      Out-of-fold, retrospective, single cohort.</p>
+      Open circles: no BSIs observed in that bin (drawn at the axis floor). Out-of-fold, retrospective, single cohort.</p>
     <h3>Warnings</h3>
     <ul class="warn">
       <li>The model design was found by an agent-assisted search on this same cohort.</li>
